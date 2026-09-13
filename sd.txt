@@ -1,0 +1,1326 @@
+🕷️ Universal Web Scraper — Complete System Design
+Table of Contents
+System Overview
+Architecture Diagram
+Core Design Principles
+Tech Stack
+Component Deep Dive
+Anti-Detection & Bypass Layer
+Pop-up & Overlay Handler
+Cloudflare & Bot Verification Bypass
+Cookie Consent Handler
+Pagination & Infinite Scroll Engine
+Data Extraction Pipeline
+Proxy & Identity Rotation Layer
+Queue & Orchestration Layer
+Storage Layer
+Monitoring & Observability
+Scaling Strategy
+Legal & Ethical Considerations
+Folder Structure
+Request Lifecycle (End-to-End Flow)
+Failure Recovery & Retry Strategy
+Cost Estimation Considerations
+System Overview
+The goal is to build a resilient, scalable, and intelligent web scraping platform that can:
+
+Navigate to any website
+Automatically dismiss pop-ups, modals, cookie banners, and overlays
+Bypass bot detection systems (Cloudflare, PerimeterX, Akamai, DataDome, hCaptcha, reCAPTCHA)
+Handle pagination (click-based, URL-based, infinite scroll, "Load More" buttons)
+Wait for dynamic content / loaders / AJAX calls to complete
+Extract structured data regardless of site layout
+Scale horizontally to scrape thousands of sites concurrently
+Retry intelligently on failures
+Store data in a queryable, normalized format
+Architecture Diagram
+text
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│                          CLIENT / TRIGGER LAYER                         │
+│    (API Gateway / Dashboard / CLI / Cron Scheduler / Webhook)           │
+└──────────────────────────┬───────────────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                        ORCHESTRATION LAYER                              │
+│                                                                          │
+│  ┌─────────────┐  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐  │
+│  │  Job Queue   │  │  Scheduler   │  │  Rate Limiter│  │  Job State  │  │
+│  │  (Bull/      │  │  (per-domain │  │  (per-domain │  │  Manager    │  │
+│  │   Celery)    │  │   politeness)│  │   throttle)  │  │  (Redis)    │  │
+│  └──────┬──────┘  └──────┬───────┘  └──────┬───────┘  └──────┬──────┘  │
+└─────────┼────────────────┼──────────────────┼────────────────┼──────────┘
+          │                │                  │                │
+          ▼                ▼                  ▼                ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                       BROWSER ENGINE POOL                               │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────────┐  │
+│  │                   Browser Instance Manager                         │  │
+│  │                                                                    │  │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐          │  │
+│  │  │ Browser 1│  │ Browser 2│  │ Browser 3│  │ Browser N│   ...    │  │
+│  │  │(stealth) │  │(stealth) │  │(stealth) │  │(stealth) │          │  │
+│  │  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘          │  │
+│  │       │              │              │              │               │  │
+│  │       ▼              ▼              ▼              ▼               │  │
+│  │  ┌─────────────────────────────────────────────────────────────┐   │  │
+│  │  │               MIDDLEWARE PIPELINE (per request)              │   │  │
+│  │  │                                                             │   │  │
+│  │  │  ┌─────────────┐                                            │   │  │
+│  │  │  │  1. Proxy    │──► Assign rotating proxy + identity       │   │  │
+│  │  │  │   Injection  │                                            │   │  │
+│  │  │  └──────┬──────┘                                            │   │  │
+│  │  │         ▼                                                    │   │  │
+│  │  │  ┌─────────────┐                                            │   │  │
+│  │  │  │  2. Stealth  │──► Fingerprint spoofing, WebGL,           │   │  │
+│  │  │  │   Patching   │    Canvas, WebRTC, Navigator overrides    │   │  │
+│  │  │  └──────┬──────┘                                            │   │  │
+│  │  │         ▼                                                    │   │  │
+│  │  │  ┌─────────────┐                                            │   │  │
+│  │  │  │  3. Page     │──► Navigate, wait for network idle        │   │  │
+│  │  │  │   Loading    │    + DOM stable + custom selectors         │   │  │
+│  │  │  └──────┬──────┘                                            │   │  │
+│  │  │         ▼                                                    │   │  │
+│  │  │  ┌─────────────┐                                            │   │  │
+│  │  │  │  4. Challenge│──► Cloudflare, CAPTCHA, JS Challenge      │   │  │
+│  │  │  │   Solver     │    detection & solving                     │   │  │
+│  │  │  └──────┬──────┘                                            │   │  │
+│  │  │         ▼                                                    │   │  │
+│  │  │  ┌─────────────┐                                            │   │  │
+│  │  │  │  5. Overlay  │──► Cookie banners, pop-ups, modals,       │   │  │
+│  │  │  │   Dismisser  │    newsletter, notification bars           │   │  │
+│  │  │  └──────┬──────┘                                            │   │  │
+│  │  │         ▼                                                    │   │  │
+│  │  │  ┌─────────────┐                                            │   │  │
+│  │  │  │  6. Content  │──► Wait for loaders, spinners, AJAX       │   │  │
+│  │  │  │   Readiness  │    skeleton screens to disappear          │   │  │
+│  │  │  └──────┬──────┘                                            │   │  │
+│  │  │         ▼                                                    │   │  │
+│  │  │  ┌─────────────┐                                            │   │  │
+│  │  │  │  7. Data     │──► CSS/XPath extraction, LLM-based        │   │  │
+│  │  │  │   Extractor  │    intelligent extraction, schema mapping  │   │  │
+│  │  │  └──────┬──────┘                                            │   │  │
+│  │  │         ▼                                                    │   │  │
+│  │  │  ┌─────────────┐                                            │   │  │
+│  │  │  │  8. Pagina-  │──► Next page detection, infinite scroll,  │   │  │
+│  │  │  │   tion Eng.  │    "Load More", URL pattern detection      │   │  │
+│  │  │  └─────────────┘                                            │   │  │
+│  │  └─────────────────────────────────────────────────────────────┘   │  │
+│  └────────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────┬───────────────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                       DATA PIPELINE LAYER                               │
+│                                                                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌────────────┐  │
+│  │  Deduplicator│  │  Transformer │  │  Validator   │  │  Enricher  │  │
+│  │              │  │  (normalize, │  │  (schema     │  │  (metadata,│  │
+│  │              │  │   clean)     │  │   check)     │  │   NLP)     │  │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └─────┬──────┘  │
+└─────────┼────────────────┼──────────────────┼───────────────┼───────────┘
+          │                │                  │               │
+          ▼                ▼                  ▼               ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         STORAGE LAYER                                   │
+│                                                                          │
+│  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌────────────────────┐   │
+│  │ PostgreSQL│  │ MongoDB   │  │ S3 / Minio│  │ Elasticsearch      │   │
+│  │ (struct.) │  │ (semi-    │  │ (raw HTML, │  │ (full-text search) │   │
+│  │           │  │  struct.) │  │ screenshots│  │                    │   │
+│  └───────────┘  └───────────┘  │  PDFs)     │  └────────────────────┘   │
+│                                └───────────┘                            │
+└──────────────────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                    MONITORING & OBSERVABILITY                            │
+│                                                                          │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌──────────────────┐  │
+│  │ Prometheus │  │  Grafana   │  │  Sentry    │  │  Structured Logs │  │
+│  │ (metrics)  │  │ (dashboard)│  │  (errors)  │  │  (ELK/Loki)     │  │
+│  └────────────┘  └────────────┘  └────────────┘  └──────────────────┘  │
+└──────────────────────────────────────────────────────────────────────────┘
+Core Design Principles
+Principle	Description
+Modularity	Every capability (popup handling, CAPTCHA solving, pagination) is a pluggable middleware module. Swap, disable, or add modules without touching core logic.
+Resilience	Every operation assumes failure. Automatic retries, circuit breakers, fallback strategies (headless → headed, browser → API), and dead-letter queues.
+Stealth-First	Every browser instance is hardened against detection by default. No request goes out without fingerprint randomization.
+Domain-Aware Politeness	Per-domain rate limiting, robots.txt awareness, and configurable delays to avoid overloading targets.
+Horizontal Scalability	Stateless workers pull from a shared queue. Scale by adding more worker containers.
+Adaptive Intelligence	Use heuristics first, ML/LLM fallback second. The system learns common patterns (e.g., "Accept Cookies" button classes) and caches strategies per domain.
+Observability	Every scrape job produces structured logs, metrics, and traces. You know exactly where and why something failed.
+Tech Stack
+Primary Recommendation
+Layer	Technology	Why
+Language	Python 3.11+ (primary) + Node.js (stealth plugins)	Python has the richest scraping ecosystem. Node.js needed for Puppeteer stealth plugins.
+Browser Automation	Playwright (Python)	Supports Chromium, Firefox, WebKit. Better API than Selenium. Built-in auto-wait. Network interception.
+Stealth Layer	playwright-stealth + puppeteer-extra-plugin-stealth (via Node bridge)	Patches all known bot detection vectors.
+Cloudflare Bypass	undetected-chromedriver / Camoufox / FlareSolverr	Specialized tools to pass Cloudflare JS challenges.
+CAPTCHA Solving	2Captcha API / Anti-Captcha / CapSolver	External CAPTCHA-solving services with human workers + AI.
+Proxy Management	BrightData / Oxylabs / SmartProxy / Scrapingbee (residential + datacenter + mobile pools)	Residential proxies are essential for avoiding IP-based blocks.
+Job Queue	Celery with Redis broker (or BullMQ if Node.js)	Distributed task queue with retries, priorities, rate limiting.
+Task Scheduler	Celery Beat / APScheduler	Periodic re-scraping, cron-based triggers.
+Orchestration	Docker + Kubernetes (or Docker Compose for small scale)	Containerized browser workers. Easy horizontal scaling.
+API Layer	FastAPI	Async, fast, auto-documented API for submitting scrape jobs and retrieving results.
+Structured Storage	PostgreSQL	Relational data, job tracking, extracted structured data.
+Semi-Structured Storage	MongoDB	Flexible schemas for varied scraped data across different sites.
+Raw Storage	S3 / MinIO	HTML snapshots, screenshots, PDFs, downloaded files.
+Search	Elasticsearch / Meilisearch	Full-text search across scraped content.
+Cache	Redis	Page cache, session cache, deduplication bloom filters, rate limiter state.
+LLM Integration	OpenAI GPT-4o / Claude / local Llama via LangChain	Intelligent extraction when CSS selectors are unreliable. Schema-aware data extraction from arbitrary pages.
+Monitoring	Prometheus + Grafana	Real-time dashboards: success rates, pages/min, proxy health.
+Error Tracking	Sentry	Exception tracking with full context.
+Logging	Structlog → Loki / ELK	Structured JSON logs for debugging and auditing.
+Alternative / Complementary Tools
+Purpose	Alternatives
+Browser Automation	Selenium Grid, Puppeteer (Node.js), Cypress (testing but adaptable)
+Lightweight Scraping (no JS)	httpx + BeautifulSoup / Parsel / lxml — use when site doesn't require JS rendering
+Framework	Scrapy (excellent for large-scale crawling; integrate with Playwright via scrapy-playwright)
+Browser Farm	Browserless.io / Apify (managed headless browser infrastructure)
+Anti-detect Browser	Camoufox (Firefox-based), GoLogin, Multilogin
+Cloudflare Bypass	Cloudscraper, curl_cffi (TLS fingerprint matching)
+Component Deep Dive
+1. Trigger / Client Layer
+text
+
+Triggers:
+├── REST API (FastAPI)      → POST /scrape { url, config }
+├── Dashboard (React/Next)  → Visual job management
+├── CLI Tool                → Command-line job submission
+├── Cron Scheduler          → Periodic re-scraping
+├── Webhook Listener        → Event-driven scraping
+└── Message Queue Consumer  → Chained pipeline triggers
+Design Decisions:
+
+Every scrape request is a Job with a unique ID, configuration, and lifecycle state.
+Configuration includes: target URL, extraction schema, pagination strategy, proxy preference, priority level.
+Jobs are idempotent — re-submitting the same job with the same config deduplicates or re-runs based on policy.
+2. Job Configuration Schema
+A job config defines everything the scraper needs to know:
+
+text
+
+ScrapeJob:
+├── job_id: UUID
+├── url: string
+├── domain: string (auto-extracted)
+├── priority: 1-10
+├── config:
+│   ├── rendering: "full_browser" | "lightweight" | "auto"
+│   ├── browser: "chromium" | "firefox" | "webkit"
+│   ├── wait_strategy:
+│   │   ├── type: "network_idle" | "selector" | "timeout" | "custom"
+│   │   ├── selector: ".content-loaded" (optional)
+│   │   └── timeout_ms: 30000
+│   ├── extraction:
+│   │   ├── mode: "css_selectors" | "xpath" | "llm_auto" | "hybrid"
+│   │   ├── schema: { title: "h1", price: ".price-tag", ... }
+│   │   └── llm_prompt: "Extract all product information..." (optional)
+│   ├── pagination:
+│   │   ├── strategy: "auto_detect" | "next_button" | "url_pattern" | "infinite_scroll" | "load_more"
+│   │   ├── max_pages: 50
+│   │   ├── next_selector: ".next-page" (optional)
+│   │   └── url_template: "/page/{n}" (optional)
+│   ├── popup_handling: true | false
+│   ├── proxy:
+│   │   ├── type: "residential" | "datacenter" | "mobile" | "auto"
+│   │   └── country: "US" (optional)
+│   ├── retry:
+│   │   ├── max_retries: 3
+│   │   ├── backoff: "exponential"
+│   │   └── retry_on: ["timeout", "blocked", "captcha_failed"]
+│   └── output:
+│       ├── format: "json" | "csv" | "database"
+│       ├── destination: "mongodb" | "s3" | "webhook"
+│       └── include_raw_html: true | false
+├── state: "queued" | "running" | "completed" | "failed" | "retrying"
+├── created_at: timestamp
+├── updated_at: timestamp
+├── result_location: string (S3 path or DB reference)
+└── error_log: []
+Anti-Detection & Bypass Layer
+This is the most critical layer. Modern websites use sophisticated bot detection. Here's how each vector is handled:
+
+Detection Vectors & Countermeasures
+Detection Method	What They Check	Our Countermeasure
+User-Agent	Browser version, OS	Rotate realistic UA strings from a curated database
+Navigator properties	navigator.webdriver, navigator.plugins, navigator.languages	Playwright-stealth patches all properties
+WebRTC leak	Real IP exposed via WebRTC	Disable WebRTC or proxy WebRTC traffic
+Canvas fingerprint	Unique canvas rendering	Add subtle noise to canvas operations
+WebGL fingerprint	GPU renderer strings	Spoof WebGL vendor/renderer
+AudioContext	Audio processing fingerprint	Override AudioContext methods
+TLS fingerprint (JA3/JA4)	TLS handshake pattern	Use curl_cffi or Camoufox for realistic TLS
+HTTP/2 fingerprint	Frame ordering, settings	Use real browser (Playwright) not raw HTTP clients
+Behavioral analysis	Mouse movement, scroll patterns, click timing	Inject human-like behavior: random delays, mouse curves, scroll events
+IP reputation	Datacenter IP ranges	Use residential/mobile proxies
+Rate patterns	Too many requests too fast	Per-domain rate limiting with random jitter
+Cookie/Session	Missing expected cookies	Persist browser profiles and cookies across sessions
+Honeypot links	Hidden links only bots click	Never click invisible elements (check display:none, visibility:hidden, opacity:0)
+JavaScript challenges	Execute complex JS to prove browser	Use real browser engine (not HTTP-only clients)
+Stealth Implementation Architecture
+text
+
+Stealth Module Pipeline:
+│
+├── 1. Browser Profile Generator
+│   ├── Generate consistent fingerprint (screen res, timezone, locale, platform)
+│   ├── Store profiles in DB for reuse per domain
+│   └── Rotate profiles periodically
+│
+├── 2. Playwright Stealth Patches
+│   ├── navigator.webdriver = undefined
+│   ├── navigator.plugins = [realistic plugin array]
+│   ├── navigator.languages = ["en-US", "en"]
+│   ├── window.chrome = { runtime: {} }
+│   ├── Permissions.query patch
+│   └── iframe contentWindow patch
+│
+├── 3. Canvas/WebGL Noise Injection
+│   ├── Override toDataURL() and toBlob() with subtle pixel noise
+│   └── Spoof WebGL unmasked vendor/renderer
+│
+├── 4. Behavior Simulator
+│   ├── Random mouse movements (Bézier curves, not linear)
+│   ├── Random scroll events (variable speed)
+│   ├── Realistic typing speed (variable delay between keystrokes)
+│   ├── Random viewport focus/blur events
+│   └── Random delays between actions (normal distribution: 500ms-3000ms)
+│
+├── 5. TLS Fingerprint Matching
+│   ├── Use browser engine for all requests (not httpx/requests)
+│   ├── For API-level scraping: curl_cffi with Chrome/Firefox impersonation
+│   └── Camoufox for Firefox-based stealth
+│
+└── 6. Header Normalization
+    ├── Send headers in correct browser order
+    ├── Include realistic Accept, Accept-Language, Accept-Encoding
+    ├── Include Sec-Fetch-* headers
+    └── Never send bot-indicative headers
+Pop-up & Overlay Handler
+Strategy: Multi-Layer Detection & Dismissal
+Pop-ups are handled through a priority-ordered pipeline of detection strategies:
+
+text
+
+Pop-up Handler Pipeline:
+│
+├── Layer 1: KNOWN PATTERN DATABASE
+│   │
+│   ├── Maintain a database of known pop-up selectors per domain
+│   ├── Common patterns (works on 80%+ of sites):
+│   │   ├── Cookie banners: #cookie-banner, .cookie-consent, #gdpr, .cc-banner
+│   │   ├── Newsletter: .modal-newsletter, .popup-subscribe, #email-popup
+│   │   ├── Age verification: .age-gate, #age-verify
+│   │   ├── Notification: .notification-bar, .push-notification-prompt
+│   │   └── Paywall soft: .paywall-overlay, .meter-wall
+│   │
+│   └── Action: Click known dismiss buttons:
+│       ├── "Accept", "Accept All", "I Agree", "Got It", "Close", "✕", "×"
+│       ├── button[class*="accept"], button[class*="agree"], button[class*="dismiss"]
+│       └── [aria-label="Close"], [aria-label="Dismiss"]
+│
+├── Layer 2: GENERIC OVERLAY DETECTION
+│   │
+│   ├── Detect elements with:
+│   │   ├── position: fixed + high z-index + covering viewport
+│   │   ├── role="dialog" or role="alertdialog"
+│   │   ├── class/id containing: modal, popup, overlay, banner, consent
+│   │   └── Backdrop/overlay divs (semi-transparent full-screen divs)
+│   │
+│   └── Action:
+│       ├── Find and click close/dismiss buttons within the overlay
+│       ├── Press Escape key
+│       ├── Click outside the modal (on backdrop)
+│       └── If all else fails: hide via JavaScript (element.style.display = 'none')
+│
+├── Layer 3: MUTATION OBSERVER (for delayed pop-ups)
+│   │
+│   ├── Set up MutationObserver on document.body
+│   ├── Watch for new nodes being added with modal/popup characteristics
+│   ├── Trigger dismissal logic when detected
+│   └── Handle pop-ups that appear after scroll, time delay, or interaction
+│
+├── Layer 4: CSS INJECTION (nuclear option)
+│   │
+│   ├── Inject CSS to force-hide common overlay patterns
+│   ├── Remove overflow:hidden from body (sites lock scrolling behind modals)
+│   └── Set pointer-events: auto on main content
+│
+├── Layer 5: BROWSER PERMISSIONS
+│   │
+│   ├── Auto-deny notification permission requests
+│   ├── Auto-deny location permission requests
+│   ├── Auto-deny camera/microphone requests
+│   └── Block alert(), confirm(), prompt() dialogs
+│
+└── Layer 6: LLM VISUAL ANALYSIS (last resort)
+    │
+    ├── Take screenshot of the page
+    ├── Send to vision LLM (GPT-4o, Claude)
+    ├── Ask: "Identify any pop-ups, modals, or overlays blocking content. 
+    │         What button should be clicked to dismiss them?"
+    └── Execute the suggested action
+Cloudflare & Bot Verification Bypass
+Challenge Types & Solutions
+text
+
+Challenge Detection & Bypass:
+│
+├── 1. CHALLENGE DETECTOR
+│   │
+│   ├── Check response status codes:
+│   │   ├── 403 → Potential block
+│   │   ├── 503 → Cloudflare challenge page
+│   │   └── 429 → Rate limited
+│   │
+│   ├── Check page content:
+│   │   ├── "Just a moment..." → Cloudflare JS challenge
+│   │   ├── "Checking your browser" → Cloudflare
+│   │   ├── "Access denied" → WAF block
+│   │   ├── "Please verify you are a human" → CAPTCHA challenge
+│   │   ├── "Pardon our interruption" → DataDome
+│   │   └── "Please enable JavaScript" → JS-required site
+│   │
+│   └── Check for challenge-specific elements:
+│       ├── #cf-challenge-running → Cloudflare
+│       ├── iframe[src*="hcaptcha"] → hCaptcha
+│       ├── iframe[src*="recaptcha"] → reCAPTCHA
+│       └── #px-captcha → PerimeterX
+│
+├── 2. JS CHALLENGE (Cloudflare "I'm Under Attack Mode")
+│   │
+│   ├── Strategy A: Wait it out (Playwright)
+│   │   ├── Cloudflare JS challenges auto-solve in 3-5 seconds
+│   │   ├── Use real browser engine with stealth patches
+│   │   └── Wait for challenge to complete, then extract cf_clearance cookie
+│   │
+│   ├── Strategy B: FlareSolverr (dedicated service)
+│   │   ├── Run FlareSolverr as a microservice
+│   │   ├── It maintains browser sessions that solve CF challenges
+│   │   └── Returns cookies and solved HTML
+│   │
+│   ├── Strategy C: curl_cffi with cf_clearance
+│   │   ├── Solve challenge once with browser
+│   │   ├── Extract cf_clearance cookie
+│   │   └── Use curl_cffi with matching TLS fingerprint for subsequent requests
+│   │
+│   └── Strategy D: Camoufox
+│       ├── Firefox-based anti-detect browser
+│       └── Different TLS fingerprint from Chromium (harder to detect)
+│
+├── 3. CAPTCHA CHALLENGES
+│   │
+│   ├── hCaptcha:
+│   │   ├── Detect iframe with hcaptcha.com
+│   │   ├── Extract sitekey from data attribute
+│   │   ├── Send to 2Captcha/Anti-Captcha API
+│   │   ├── Receive solution token
+│   │   └── Inject token and submit form
+│   │
+│   ├── reCAPTCHA v2:
+│   │   ├── Same flow as hCaptcha
+│   │   └── Click checkbox first; if image challenge appears, send to solver
+│   │
+│   ├── reCAPTCHA v3 (invisible):
+│   │   ├── Score-based, no visual challenge
+│   │   ├── Mitigation: realistic behavior simulation
+│   │   ├── Use residential proxies
+│   │   └── Maintain browser sessions with history
+│   │
+│   ├── Turnstile (Cloudflare):
+│   │   ├── Newer, harder to bypass
+│   │   ├── Use CapSolver or 2Captcha Turnstile support
+│   │   └── Fallback: managed browser sessions
+│   │
+│   └── Custom CAPTCHAs:
+│       ├── Screenshot the challenge
+│       ├── Send to CAPTCHA solving service
+│       └── Or use OCR/ML model for simple text CAPTCHAs
+│
+├── 4. MANAGED CHALLENGE (Cloudflare)
+│   │
+│   ├── Combination of JS + behavioral + fingerprint check
+│   ├── Requires real browser with stealth
+│   ├── Human-like interaction simulation
+│   └── Residential proxy mandatory
+│
+├── 5. COOKIE-BASED CHALLENGES
+│   │
+│   ├── Some sites set test cookies and redirect
+│   ├── Ensure cookies are enabled in browser context
+│   ├── Persist cookies across requests for same domain
+│   └── Share cookies across lightweight (httpx) and browser requests
+│
+└── 6. ESCALATION STRATEGY
+    │
+    ├── Level 0: Try lightweight request (httpx + curl_cffi)
+    ├── Level 1: Try headless Playwright with stealth
+    ├── Level 2: Try headed Playwright (some sites detect headless)
+    ├── Level 3: Try FlareSolverr / Camoufox
+    ├── Level 4: Try with CAPTCHA solving service
+    ├── Level 5: Try with premium residential proxy + full stealth
+    └── Level 6: Flag for manual review / use managed service (ScrapingBee, Apify)
+Cookie Consent Handler
+Designed as a specialized sub-module of the Pop-up Handler:
+
+text
+
+Cookie Consent Handler:
+│
+├── DETECTION
+│   │
+│   ├── Known Consent Management Platforms (CMPs):
+│   │   ├── OneTrust: #onetrust-banner-sdk, .onetrust-pc-dark-filter
+│   │   ├── CookieBot: #CybotCookiebotDialog
+│   │   ├── TrustArc: #truste-consent-track
+│   │   ├── Quantcast: .qc-cmp2-container
+│   │   ├── Didomi: #didomi-host
+│   │   ├── CookieYes: .cky-consent-container
+│   │   ├── Osano: .osano-cm-dialog
+│   │   └── Custom: detected by keyword analysis
+│   │
+│   └── Generic detection:
+│       ├── Elements containing text: "cookie", "consent", "privacy", "GDPR"
+│       ├── Fixed/sticky position at top or bottom of viewport
+│       └── High z-index overlay
+│
+├── ACCEPTANCE STRATEGIES
+│   │
+│   ├── Strategy 1: Click "Accept All" (fastest)
+│   │   ├── Find button with text: "Accept All", "Accept Cookies", "Allow All"
+│   │   ├── Known selectors per CMP (e.g., #onetrust-accept-btn-handler)
+│   │   └── Generic: button containing "accept" text
+│   │
+│   ├── Strategy 2: Click "Reject All" / "Necessary Only" (if required by compliance)
+│   │   └── Some use cases require minimal cookie consent
+│   │
+│   └── Strategy 3: JavaScript injection
+│       ├── Set consent cookies directly (e.g., CookieBot's CookieConsent cookie)
+│       ├── Call CMP's JavaScript API (e.g., OneTrust.AllowAll())
+│       └── Dispatch consent event
+│
+└── POST-ACCEPTANCE
+    ├── Wait for banner to disappear
+    ├── Remove overflow:hidden from body if set
+    └── Persist consent cookies for future requests to same domain
+Pagination & Infinite Scroll Engine
+text
+
+Pagination Engine:
+│
+├── AUTO-DETECTION MODULE
+│   │
+│   ├── Analyze page for pagination indicators:
+│   │   ├── <a> or <button> with text: "Next", "→", "»", ">", "Load More"
+│   │   ├── Elements with class/id containing: "pagination", "pager", "page-nav"
+│   │   ├── <nav> elements containing numbered links
+│   │   ├── URL patterns: ?page=1, /page/1, &offset=0, &start=0, &p=1
+│   │   ├── rel="next" link in <head>
+│   │   └── Infinite scroll indicators (scroll event listeners, IntersectionObserver)
+│   │
+│   └── Classify pagination type:
+│       ├── TYPE_A: Traditional numbered pagination
+│       ├── TYPE_B: Next/Previous button only
+│       ├── TYPE_C: URL-based pattern (increment number in URL)
+│       ├── TYPE_D: Infinite scroll (content loads on scroll)
+│       ├── TYPE_E: "Load More" button
+│       ├── TYPE_F: AJAX/API-based (detect XHR/fetch calls returning data)
+│       └── TYPE_G: Cursor-based / token-based (API pagination)
+│
+├── STRATEGY EXECUTION
+│   │
+│   ├── TYPE_A & TYPE_B: Click-based
+│   │   ├── Find and click "Next" or page number
+│   │   ├── Wait for page load / content update
+│   │   ├── Detect if content actually changed (hash comparison)
+│   │   └── Continue until: no next button, max pages reached, or duplicate content
+│   │
+│   ├── TYPE_C: URL-based
+│   │   ├── Generate URLs from detected pattern
+│   │   ├── Request each URL directly (can parallelize!)
+│   │   └── Continue until: empty results or max pages
+│   │
+│   ├── TYPE_D: Infinite scroll
+│   │   ├── Scroll to bottom of page
+│   │   ├── Wait for new content to load (MutationObserver on content container)
+│   │   ├── Count items before/after scroll to detect new items
+│   │   ├── Continue scrolling until: no new items, max items reached, or spinner disappears permanently
+│   │   └── Handle "scroll back up" patterns (some sites unload content)
+│   │
+│   ├── TYPE_E: Load More button
+│   │   ├── Click the "Load More" button
+│   │   ├── Wait for new items to appear
+│   │   ├── Repeat until button disappears or max items reached
+│   │   └── Some sites replace "Load More" with a spinner; wait for spinner to complete
+│   │
+│   └── TYPE_F & TYPE_G: API-based
+│       ├── Intercept XHR/fetch calls during page load
+│       ├── Identify the API endpoint returning list data
+│       ├── Replay the API call with incremented page/offset/cursor parameters
+│       ├── Parse JSON response directly (much faster than DOM parsing!)
+│       └── Continue until: empty results array or cursor is null
+│
+├── DEDUPLICATION
+│   │
+│   ├── Hash each extracted item (based on unique fields)
+│   ├── Maintain bloom filter or set of seen hashes
+│   ├── Skip duplicate items
+│   └── Detect when pagination loops back to page 1 (common on misconfigured sites)
+│
+├── TERMINATION CONDITIONS
+│   │
+│   ├── Max pages reached (configurable, default: 100)
+│   ├── Max items reached (configurable)
+│   ├── Max time elapsed (configurable, default: 30 minutes)
+│   ├── Consecutive pages with no new items
+│   ├── HTTP error on next page
+│   └── Content hash unchanged after pagination action
+│
+└── OPTIMIZATION
+    ├── Parallelize URL-based pagination (process 5 pages concurrently)
+    ├── For API-based: bypass browser entirely, use httpx
+    └── Progressive extraction: extract and save data per page (don't wait for all pages)
+Data Extraction Pipeline
+text
+
+Extraction Engine:
+│
+├── MODE 1: SELECTOR-BASED (fastest, most reliable when selectors are known)
+│   │
+│   ├── CSS Selectors
+│   ├── XPath expressions
+│   ├── Compound selectors with fallbacks: [".price", ".cost", "[itemprop='price']"]
+│   └── Attribute extraction: href, src, data-*, innerText, innerHTML
+│
+├── MODE 2: SCHEMA-BASED AUTO-DETECTION
+│   │
+│   ├── Detect structured data already on page:
+│   │   ├── JSON-LD (<script type="application/ld+json">)
+│   │   ├── Microdata (itemprop, itemscope)
+│   │   ├── RDFa
+│   │   ├── Open Graph meta tags
+│   │   └── Twitter Card meta tags
+│   │
+│   └── Parse and normalize to unified schema
+│
+├── MODE 3: LLM-BASED INTELLIGENT EXTRACTION
+│   │
+│   ├── When to use:
+│   │   ├── Unknown site structure
+│   │   ├── Selectors change frequently
+│   │   ├── Complex, unstructured content
+│   │   └── When user provides natural language extraction instructions
+│   │
+│   ├── Implementation:
+│   │   ├── Clean HTML (remove scripts, styles, nav, footer)
+│   │   ├── Convert to markdown (reduce token count)
+│   │   ├── Send to LLM with extraction prompt + output schema
+│   │   ├── Parse structured JSON response
+│   │   └── Validate against expected schema
+│   │
+│   └── Optimization:
+│       ├── Cache extraction strategies per domain
+│       ├── Use LLM to GENERATE selectors, then use selectors for subsequent pages
+│       ├── Use smaller/local models (Llama 3, Mistral) for simple extraction
+│       └── Chunk large pages to stay within context limits
+│
+├── MODE 4: HYBRID (recommended default)
+│   │
+│   ├── Try structured data extraction first (JSON-LD, microdata)
+│   ├── Fall back to selector-based extraction
+│   ├── Fall back to LLM-based extraction
+│   └── Merge results from all sources, prefer structured data
+│
+├── MODE 5: API INTERCEPTION
+│   │
+│   ├── Monitor network requests during page load
+│   ├── Identify API calls that return the data we need
+│   ├── Extract data directly from API responses (JSON)
+│   └── Often contains more data than what's rendered on page
+│
+└── POST-EXTRACTION PROCESSING
+    ├── Type coercion (strings to numbers, dates to ISO format)
+    ├── Text cleaning (trim, normalize whitespace, decode entities)
+    ├── URL resolution (relative → absolute)
+    ├── Image URL extraction and optional download
+    └── Schema validation (ensure required fields are present)
+Proxy & Identity Rotation Layer
+text
+
+Proxy Management System:
+│
+├── PROXY POOL MANAGEMENT
+│   │
+│   ├── Proxy Sources:
+│   │   ├── Residential proxies (BrightData, Oxylabs) — best for anti-detection
+│   │   ├── Datacenter proxies — fast, cheap, but easily detected
+│   │   ├── Mobile proxies — hardest to block, most expensive
+│   │   ├── ISP proxies — residential IPs from datacenter infrastructure
+│   │   └── Free proxies (NOT recommended — unreliable, insecure)
+│   │
+│   ├── Pool Organization:
+│   │   ├── Tier 1: Residential (for protected sites)
+│   │   ├── Tier 2: ISP (for moderately protected sites)
+│   │   ├── Tier 3: Datacenter (for easy sites)
+│   │   └── Each tier organized by country/region
+│   │
+│   └── Health Monitoring:
+│       ├── Periodic health checks (latency, success rate)
+│       ├── Automatic removal of dead/slow proxies
+│       ├── Track per-proxy success rate per domain
+│       └── Ban detection: if proxy gets blocked, cool down period
+│
+├── ROTATION STRATEGY
+│   │
+│   ├── Per-request rotation: new proxy for each request
+│   ├── Per-session rotation: same proxy for all requests in a session (better for sites tracking session-IP correlation)
+│   ├── Per-domain sticky: same proxy for a domain within a time window
+│   ├── Escalation: datacenter → ISP → residential → mobile (on failure)
+│   └── Geographic matching: match proxy country to target site's region
+│
+├── IDENTITY PROFILE
+│   │
+│   ├── Each proxy is paired with a consistent identity:
+│   │   ├── User-Agent string (matching proxy's supposed OS/browser)
+│   │   ├── Screen resolution
+│   │   ├── Timezone (matching proxy's geolocation)
+│   │   ├── Language preferences
+│   │   ├── Platform (Windows/Mac/Linux)
+│   │   └── Browser fingerprint hash
+│   │
+│   └── Identity persistence:
+│       ├── Store identity profiles in Redis
+│       ├── Reuse same identity with same proxy
+│       └── Rotate identity when rotating proxy
+│
+└── SMART PROXY ROUTING
+    ├── Easy sites (no protection): datacenter proxy, or direct
+    ├── Medium sites (basic bot detection): ISP/residential
+    ├── Hard sites (Cloudflare, PerimeterX): residential, stealth browser
+    ├── Very hard sites (aggressive detection): mobile proxy, full stealth, CAPTCHA solver
+    └── Decision made automatically based on domain difficulty score (learned from historical success/failure)
+Queue & Orchestration Layer
+text
+
+Orchestration Architecture:
+│
+├── JOB QUEUE (Celery + Redis)
+│   │
+│   ├── Priority Queues:
+│   │   ├── critical (priority 1-3): immediate processing
+│   │   ├── standard (priority 4-7): normal processing
+│   │   └── background (priority 8-10): low priority, fill capacity
+│   │
+│   ├── Domain-specific queues:
+│   │   ├── Prevent one domain from monopolizing workers
+│   │   └── Apply per-domain rate limits
+│   │
+│   └── Dead Letter Queue:
+│       ├── Jobs that fail after all retries
+│       └── Reviewed manually or by alert system
+│
+├── WORKER POOL
+│   │
+│   ├── Worker Types:
+│   │   ├── Browser Workers: run Playwright, handle JS-heavy sites
+│   │   ├── Lightweight Workers: httpx/curl_cffi, for simple HTML sites
+│   │   └── CAPTCHA Workers: dedicated to solving CAPTCHA challenges
+│   │
+│   ├── Concurrency:
+│   │   ├── Each browser worker runs 3-5 browser tabs concurrently
+│   │   ├── Each lightweight worker handles 20-50 concurrent requests
+│   │   └── Auto-scale workers based on queue depth (K8s HPA)
+│   │
+│   └── Resource Management:
+│       ├── Browser memory limits (restart browser after N pages)
+│       ├── Browser context isolation (each job gets fresh context)
+│       └── Graceful shutdown (finish current job before stopping)
+│
+├── RATE LIMITER
+│   │
+│   ├── Per-domain rate limiting (e.g., max 2 req/sec for example.com)
+│   ├── Global rate limiting (max 100 req/sec across all domains)
+│   ├── Adaptive: slow down if seeing more blocks/CAPTCHAs
+│   ├── Respect robots.txt Crawl-delay directive
+│   └── Random jitter added to all delays (avoid periodic patterns)
+│
+├── SCHEDULER
+│   │
+│   ├── Celery Beat for periodic tasks
+│   ├── Re-scrape schedules (daily, weekly, on-change)
+│   ├── Proxy health checks (every 5 minutes)
+│   └── Cache cleanup (daily)
+│
+└── STATE MANAGEMENT (Redis)
+    ├── Job state tracking (queued → running → completed/failed)
+    ├── Pagination state (current page, items collected so far)
+    ├── Domain difficulty scores (updated after each attempt)
+    ├── Proxy health scores
+    ├── Deduplication bloom filters
+    └── Rate limiter token buckets
+Storage Layer
+text
+
+Storage Architecture:
+│
+├── PostgreSQL (Primary relational store)
+│   │
+│   ├── Tables:
+│   │   ├── jobs: job configuration, state, timestamps
+│   │   ├── job_results: extracted data (for structured/known schemas)
+│   │   ├── domains: domain metadata, difficulty score, known selectors
+│   │   ├── proxies: proxy pool, health metrics
+│   │   ├── browser_profiles: reusable fingerprint configurations
+│   │   └── schedules: recurring scrape job definitions
+│   │
+│   └── Use cases: Job tracking, analytics, relational queries
+│
+├── MongoDB (Semi-structured data store)
+│   │
+│   ├── Collections:
+│   │   ├── scraped_data: extracted data with flexible schemas (different per site)
+│   │   ├── extraction_strategies: cached LLM-generated extraction configs per domain
+│   │   └── site_configs: learned site-specific configurations
+│   │
+│   └── Use cases: Storing diverse scraped data without rigid schemas
+│
+├── Redis (Cache & state)
+│   │
+│   ├── Job queue broker
+│   ├── Rate limiter state
+│   ├── Session/cookie cache
+│   ├── Deduplication bloom filters
+│   ├── Temporary extraction results (before persistence)
+│   └── Real-time metrics counters
+│
+├── S3 / MinIO (Object storage)
+│   │
+│   ├── Raw HTML snapshots (for debugging and re-extraction)
+│   ├── Screenshots (for visual debugging and LLM analysis)
+│   ├── Downloaded files (PDFs, images, documents)
+│   ├── HAR files (network traffic recordings)
+│   └── Export files (CSV, JSON dumps)
+│
+└── Elasticsearch / Meilisearch (Search)
+    │
+    ├── Full-text index of scraped content
+    ├── Fast search across all scraped data
+    └── Aggregation queries for analytics
+Monitoring & Observability
+text
+
+Observability Stack:
+│
+├── METRICS (Prometheus)
+│   │
+│   ├── Scraping metrics:
+│   │   ├── pages_scraped_total (counter, labels: domain, status)
+│   │   ├── scrape_duration_seconds (histogram)
+│   │   ├── items_extracted_total (counter)
+│   │   ├── bytes_downloaded_total (counter)
+│   │   └── active_browser_sessions (gauge)
+│   │
+│   ├── Protection metrics:
+│   │   ├── captchas_encountered_total (counter, labels: type)
+│   │   ├── captchas_solved_total (counter)
+│   │   ├── captcha_solve_duration_seconds (histogram)
+│   │   ├── blocks_detected_total (counter, labels: domain, type)
+│   │   └── cloudflare_challenges_total (counter)
+│   │
+│   ├── Proxy metrics:
+│   │   ├── proxy_requests_total (counter, labels: proxy_type, status)
+│   │   ├── proxy_response_time_seconds (histogram)
+│   │   └── proxy_pool_size (gauge, labels: type, status)
+│   │
+│   └── System metrics:
+│       ├── worker_count (gauge)
+│       ├── queue_depth (gauge, labels: queue_name)
+│       ├── memory_usage_bytes (gauge)
+│       └── browser_crashes_total (counter)
+│
+├── DASHBOARDS (Grafana)
+│   │
+│   ├── Overview: success rate, pages/min, active jobs
+│   ├── Per-domain: success rate, avg response time, block rate
+│   ├── Proxy health: pool size, success rate, latency distribution
+│   ├── Queue: depth over time, processing rate, DLQ size
+│   └── Costs: CAPTCHA solving costs, proxy costs, compute costs
+│
+├── ALERTING
+│   │
+│   ├── Success rate drops below 80% for any domain
+│   ├── Queue depth exceeds threshold (jobs backing up)
+│   ├── CAPTCHA encounter rate spikes (site changed protection)
+│   ├── Proxy pool drops below minimum size
+│   ├── Worker crash rate exceeds threshold
+│   └── Cost anomalies (CAPTCHA solving spend spike)
+│
+├── LOGGING (Structlog → Loki/ELK)
+│   │
+│   ├── Structured JSON logs for every operation
+│   ├── Log levels: DEBUG (per-action), INFO (per-page), WARN (retries), ERROR (failures)
+│   ├── Correlation: all logs tagged with job_id, domain, worker_id
+│   └── Searchable and filterable in Grafana/Kibana
+│
+├── ERROR TRACKING (Sentry)
+│   │
+│   ├── Automatic exception capture with full context
+│   ├── Screenshots attached to browser errors
+│   ├── Stack traces with local variables
+│   └── Issue grouping and trend detection
+│
+└── TRACING (OpenTelemetry → Jaeger)
+    │
+    ├── End-to-end trace for each scrape job
+    ├── Spans: queue_wait → browser_launch → page_load → challenge_solve → 
+    │          popup_dismiss → extract → paginate → store
+    └── Identify bottlenecks in the pipeline
+Scaling Strategy
+text
+
+Scaling Architecture:
+│
+├── HORIZONTAL SCALING (primary)
+│   │
+│   ├── Workers are stateless containers
+│   ├── Scale by adding more worker pods (Kubernetes HPA)
+│   ├── Auto-scale based on:
+│   │   ├── Queue depth (more jobs → more workers)
+│   │   ├── CPU/memory usage
+│   │   └── Custom metric: avg queue wait time
+│   │
+│   └── Limits:
+│       ├── Each browser worker needs ~512MB-1GB RAM
+│       ├── Budget for 3-5 tabs per worker = ~2-4GB RAM per worker pod
+│       └── Plan for 50-100 worker pods for serious production use
+│
+├── VERTICAL OPTIMIZATION
+│   │
+│   ├── Use lightweight requests (httpx) when possible; browser only when needed
+│   ├── Reuse browser contexts across pages on same domain
+│   ├── Close browser contexts aggressively after each job
+│   ├── Use browser pools (pre-warmed browsers ready to go)
+│   └── Image/media blocking for pages where only text is needed
+│
+├── GEOGRAPHIC DISTRIBUTION
+│   │
+│   ├── Deploy worker clusters in multiple regions
+│   ├── Route jobs to workers closest to target site's servers
+│   ├── Match proxy geography to worker geography
+│   └── Reduce latency, improve stealth
+│
+├── CACHING
+│   │
+│   ├── Page-level cache (don't re-scrape same page within TTL)
+│   ├── Domain config cache (known selectors, pagination strategy)
+│   ├── Cloudflare cookie cache (reuse cf_clearance within validity)
+│   └── DNS cache (avoid repeated lookups)
+│
+└── TIERED PROCESSING
+    ├── Tier 1: Try httpx + curl_cffi (fastest, cheapest)
+    ├── Tier 2: Try headless Playwright with stealth (medium cost)
+    ├── Tier 3: Try full browser + CAPTCHA solving (highest cost)
+    └── Automatic escalation based on response analysis
+Legal & Ethical Considerations
+text
+
+Compliance Framework:
+│
+├── ROBOTS.TXT COMPLIANCE
+│   ├── Fetch and parse robots.txt before scraping any domain
+│   ├── Respect Disallow directives by default (configurable override with flag)
+│   ├── Respect Crawl-delay directive
+│   └── Cache robots.txt per domain (refresh every 24 hours)
+│
+├── RATE LIMITING / POLITENESS
+│   ├── Never hammer a site with concurrent requests
+│   ├── Default: max 1 request/second per domain
+│   ├── Back off when receiving 429 or slow responses
+│   └── Identify as a bot in User-Agent (optional, for ethical scrapers)
+│
+├── TERMS OF SERVICE
+│   ├── Log which sites have ToS prohibiting scraping
+│   ├── Flag jobs targeting these sites for manual review
+│   └── Provide ToS compliance mode (skip prohibited sites)
+│
+├── DATA PRIVACY
+│   ├── Don't scrape/store PII unless explicitly required
+│   ├── GDPR compliance: ability to delete scraped data on request
+│   ├── Don't scrape behind login walls without explicit authorization
+│   └── Encrypt stored data at rest and in transit
+│
+├── COPYRIGHT
+│   ├── Respect copyright on scraped content
+│   ├── Use scraped data for analysis, not republishing (unless permitted)
+│   └── Maintain provenance (source URL, scrape timestamp)
+│
+└── OPERATIONAL
+    ├── Maintain an abuse contact email
+    ├── Respond to cease-and-desist requests
+    ├── Ability to blacklist domains
+    └── Audit trail for all scraping activity
+Folder Structure
+text
+
+universal-scraper/
+│
+├── docker-compose.yml
+├── Dockerfile.worker
+├── Dockerfile.api
+├── kubernetes/
+│   ├── deployment-workers.yaml
+│   ├── deployment-api.yaml
+│   ├── hpa.yaml
+│   ├── configmap.yaml
+│   └── secrets.yaml
+│
+├── src/
+│   ├── api/
+│   │   ├── main.py                    # FastAPI application
+│   │   ├── routes/
+│   │   │   ├── jobs.py                # CRUD for scrape jobs
+│   │   │   ├── results.py             # Query scraped data
+│   │   │   └── health.py              # Health checks
+│   │   └── schemas/
+│   │       ├── job_config.py          # Pydantic models for job configuration
+│   │       └── responses.py           # Response models
+│   │
+│   ├── core/
+│   │   ├── engine.py                  # Main scraping engine orchestrator
+│   │   ├── job_manager.py             # Job lifecycle management
+│   │   └── config.py                  # Global configuration
+│   │
+│   ├── browser/
+│   │   ├── pool.py                    # Browser instance pool manager
+│   │   ├── context_factory.py         # Create stealth browser contexts
+│   │   ├── stealth/
+│   │   │   ├── patches.py             # Stealth JavaScript patches
+│   │   │   ├── fingerprint.py         # Fingerprint generation
+│   │   │   └── behavior.py            # Human-like behavior simulation
+│   │   └── interceptors/
+│   │       ├── network.py             # Network request interception
+│   │       └── api_detector.py        # Detect and capture API calls
+│   │
+│   ├── middleware/
+│   │   ├── base.py                    # Base middleware class
+│   │   ├── proxy_injector.py          # Proxy assignment middleware
+│   │   ├── stealth_patcher.py         # Apply stealth patches
+│   │   ├── page_loader.py             # Navigate and wait for content
+│   │   ├── challenge_solver.py        # Cloudflare/CAPTCHA handling
+│   │   ├── popup_handler.py           # Pop-up/overlay dismissal
+│   │   ├── cookie_consent.py          # Cookie banner handling
+│   │   ├── content_readiness.py       # Wait for loaders/spinners
+│   │   └── pipeline.py               # Middleware pipeline executor
+│   │
+│   ├── extraction/
+│   │   ├── base.py                    # Base extractor class
+│   │   ├── selector_extractor.py      # CSS/XPath extraction
+│   │   ├── structured_data.py         # JSON-LD, microdata extraction
+│   │   ├── llm_extractor.py           # LLM-based extraction
+│   │   ├── api_extractor.py           # Extract from intercepted API calls
+│   │   └── hybrid_extractor.py        # Combines all extraction strategies
+│   │
+│   ├── pagination/
+│   │   ├── detector.py                # Auto-detect pagination type
+│   │   ├── strategies/
+│   │   │   ├── click_next.py          # Click-based pagination
+│   │   │   ├── url_pattern.py         # URL-based pagination
+│   │   │   ├── infinite_scroll.py     # Scroll-based loading
+│   │   │   ├── load_more.py           # "Load More" button
+│   │   │   └── api_pagination.py      # API parameter pagination
+│   │   └── deduplicator.py            # Detect duplicate items across pages
+│   │
+│   ├── proxy/
+│   │   ├── pool_manager.py            # Manage proxy pools
+│   │   ├── rotator.py                 # Proxy rotation logic
+│   │   ├── health_checker.py          # Proxy health monitoring
+│   │   ├── providers/
+│   │   │   ├── brightdata.py          # BrightData integration
+│   │   │   ├── oxylabs.py             # Oxylabs integration
+│   │   │   └── generic.py             # Generic proxy list
+│   │   └── identity.py               # Identity profile generator
+│   │
+│   ├── captcha/
+│   │   ├── detector.py                # Detect CAPTCHA type
+│   │   ├── solvers/
+│   │   │   ├── two_captcha.py         # 2Captcha integration
+│   │   │   ├── anticaptcha.py         # Anti-Captcha integration
+│   │   │   ├── capsolver.py           # CapSolver integration
+│   │   │   └── turnstile.py           # Cloudflare Turnstile solver
+│   │   └── injector.py               # Inject CAPTCHA solution into page
+│   │
+│   ├── storage/
+│   │   ├── postgres.py                # PostgreSQL operations
+│   │   ├── mongodb.py                 # MongoDB operations
+│   │   ├── s3.py                      # S3/MinIO operations
+│   │   ├── elasticsearch.py           # Elasticsearch operations
+│   │   └── redis_cache.py             # Redis caching operations
+│   │
+│   ├── pipeline/
+│   │   ├── deduplicator.py            # Data deduplication
+│   │   ├── transformer.py             # Data cleaning and normalization
+│   │   ├── validator.py               # Schema validation
+│   │   └── enricher.py               # Metadata enrichment
+│   │
+│   ├── queue/
+│   │   ├── celery_app.py              # Celery configuration
+│   │   ├── tasks.py                   # Celery task definitions
+│   │   └── rate_limiter.py            # Per-domain rate limiting
+│   │
+│   └── monitoring/
+│       ├── metrics.py                 # Prometheus metrics
+│       ├── health.py                  # Health check endpoints
+│       └── tracing.py                 # OpenTelemetry setup
+│
+├── config/
+│   ├── default.yaml                   # Default configuration
+│   ├── production.yaml                # Production overrides
+│   ├── known_popups.yaml              # Database of known popup selectors
+│   ├── known_cookies.yaml             # Database of known cookie consent selectors
+│   ├── user_agents.yaml               # Curated user agent strings
+│   └── fingerprints.yaml              # Browser fingerprint templates
+│
+├── tests/
+│   ├── unit/
+│   ├── integration/
+│   └── e2e/
+│
+├── scripts/
+│   ├── seed_proxies.py
+│   ├── benchmark.py
+│   └── migrate_db.py
+│
+├── requirements.txt
+├── pyproject.toml
+└── README.md
+Request Lifecycle (End-to-End Flow)
+text
+
+COMPLETE REQUEST LIFECYCLE:
+
+1. JOB SUBMISSION
+   │
+   └─► API receives scrape request → validates config → creates Job record 
+       in PostgreSQL → pushes to appropriate Celery queue
+
+2. JOB PICKUP
+   │
+   └─► Celery worker picks job from queue → checks rate limiter for domain
+       → if rate limited, re-queue with delay → if clear, proceed
+
+3. RENDERING DECISION
+   │
+   ├─► Check domain difficulty score in Redis
+   ├─► If score = "easy" → try lightweight (httpx + curl_cffi)
+   ├─► If score = "medium" → use headless Playwright
+   ├─► If score = "hard" → use Playwright + stealth + residential proxy
+   └─► If unknown → start lightweight, escalate on failure
+
+4. IDENTITY SETUP
+   │
+   ├─► Select proxy from appropriate pool
+   ├─► Generate or retrieve matching identity profile
+   ├─► Configure browser context with fingerprint
+   └─► Set up network interception (for API detection)
+
+5. PAGE LOADING
+   │
+   ├─► Navigate to target URL
+   ├─► Wait for initial page load (network idle / DOM content loaded)
+   ├─► Start timer for overall page readiness
+   └─► Begin middleware pipeline
+
+6. CHALLENGE DETECTION & SOLVING
+   │
+   ├─► Check if page is a Cloudflare/bot challenge page
+   ├─► If JS challenge → wait for auto-solve (3-5 seconds)
+   ├─► If CAPTCHA → detect type → send to solving service → inject solution
+   ├─► If blocked → escalate (better proxy, different strategy)
+   ├─► Extract and cache any clearance cookies
+   └─► Verify we've reached the actual content page
+
+7. OVERLAY DISMISSAL
+   │
+   ├─► Run cookie consent handler → accept/dismiss
+   ├─► Run popup handler → dismiss modals, banners, notifications
+   ├─► Block browser permission prompts
+   ├─► Remove scroll locks (overflow: hidden on body)
+   └─► Wait for any animations to complete
+
+8. CONTENT READINESS
+   │
+   ├─► Wait for loaders/spinners to disappear
+   ├─► Wait for skeleton screens to be replaced with content
+   ├─► Wait for lazy-loaded images (if needed)
+   ├─► Wait for custom readiness selector (if configured)
+   └─► Verify content is present (not empty, not error page)
+
+9. DATA EXTRACTION (FIRST PAGE)
+   │
+   ├─► Try structured data extraction (JSON-LD, microdata)
+   ├─► Apply configured selectors (CSS/XPath)
+   ├─► If no selectors configured → use LLM extraction
+   ├─► If LLM used → cache generated selectors for subsequent pages
+   ├─► Extract all matched items
+   ├─► Store raw HTML snapshot to S3
+   └─► Take screenshot (optional, for debugging)
+
+10. PAGINATION
+    │
+    ├─► Auto-detect pagination type (if not configured)
+    ├─► Execute pagination strategy (click next / scroll / change URL)
+    ├─► Wait for new content to load
+    ├─► Run overlay dismissal again (pop-ups may reappear)
+    ├─► Extract data from new page
+    ├─► Deduplicate against already-extracted items
+    ├─► Check termination conditions
+    └─► Repeat until done
+
+11. DATA PROCESSING
+    │
+    ├─► Deduplicate extracted items
+    ├─► Clean and normalize data (trim, type coerce, URL resolve)
+    ├─► Validate against expected schema
+    ├─► Enrich with metadata (source URL, timestamp, job ID)
+    └─► Transform to output format
+
+12. STORAGE
+    │
+    ├─► Save to primary store (PostgreSQL or MongoDB)
+    ├─► Index in Elasticsearch (if search enabled)
+    ├─► Save raw HTML/screenshots to S3
+    └─► Update job status to "completed"
+
+13. NOTIFICATION
+    │
+    ├─► Fire webhook (if configured)
+    ├─► Update metrics (pages scraped, items extracted, duration)
+    ├─► Update domain difficulty score based on outcome
+    └─► Release browser context and proxy back to pools
+
+14. ERROR HANDLING (at any step)
+    │
+    ├─► Capture error with full context
+    ├─► Log structured error to logging system
+    ├─► Report to Sentry
+    ├─► If retryable → re-queue with backoff
+    ├─► If escalatable → retry with higher-tier strategy
+    ├─► If fatal → move to dead letter queue → update job as "failed"
+    └─► Save partial results (if any pages were successfully scraped)
+Failure Recovery & Retry Strategy
+text
+
+Retry & Recovery System:
+│
+├── RETRY CLASSIFICATION
+│   │
+│   ├── Transient errors (auto-retry):
+│   │   ├── Network timeout
+│   │   ├── Connection reset
+│   │   ├── 502, 503, 504 HTTP errors
+│   │   ├── Browser crash
+│   │   ├── CAPTCHA solving timeout
+│   │   └── Proxy connection failure
+│   │
+│   ├── Escalation errors (retry with different strategy):
+│   │   ├── 403 Forbidden (escalate proxy tier)
+│   │   ├── Cloudflare challenge (escalate to FlareSolverr)
+│   │   ├── CAPTCHA failed (try different solving service)
+│   │   └── Empty content (try different browser/rendering)
+│   │
+│   └── Fatal errors (no retry):
+│       ├── 404 Not Found
+│       ├── Invalid URL
+│       ├── Domain doesn't exist
+│       └── Max retries exhausted
+│
+├── RETRY POLICY
+│   │
+│   ├── Max retries: 3 (configurable per job)
+│   ├── Backoff: exponential with jitter
+│   │   ├── Retry 1: 5-10 seconds
+│   │   ├── Retry 2: 15-30 seconds
+│   │   └── Retry 3: 60-120 seconds
+│   │
+│   └── Strategy escalation on each retry:
+│       ├── Retry 1: Same strategy, different proxy
+│       ├── Retry 2: Higher-tier proxy + different browser
+│       └── Retry 3: Full stealth + CAPTCHA solver + residential proxy
+│
+├── CHECKPOINT & RESUME
+│   │
+│   ├── Save pagination state after each page
+│   ├── On failure mid-pagination: resume from last successful page
+│   ├── Store partial results in database
+│   └── Mark job as "partially_completed" if some pages succeeded
+│
+└── CIRCUIT BREAKER (per domain)
+    │
+    ├── Track failure rate per domain (sliding window)
+    ├── If failure rate > 70% in last 10 requests → circuit OPEN
+    ├── Circuit OPEN: pause all jobs for this domain for 5 minutes
+    ├── After cooldown: allow 1 test request (circuit HALF-OPEN)
+    ├── If test succeeds → circuit CLOSED, resume normal operation
+    └── If test fails → circuit OPEN again, increase cooldown
+Cost Estimation Considerations
+text
+
+Cost Centers:
+│
+├── COMPUTE (biggest cost at scale)
+│   ├── Browser workers: ~2-4 GB RAM each
+│   ├── Estimate: $50-200/month per always-on worker (cloud VMs)
+│   ├── Optimization: use spot instances, scale to zero when idle
+│   └── Budget: 10 workers × $100 = ~$1,000/month
+│
+├── PROXIES (second biggest cost)
+│   ├── Residential: $8-15 per GB of traffic
+│   ├── Datacenter: $0.5-2 per GB
+│   ├── Mobile: $20-40 per GB
+│   ├── Estimate: 100GB residential/month = ~$1,000-1,500/month
+│   └── Optimization: use datacenter for easy sites, residential only when needed
+│
+├── CAPTCHA SOLVING
+│   ├── 2Captcha: $2.99 per 1000 CAPTCHAs
+│   ├── hCaptcha: $3-5 per 1000
+│   ├── reCAPTCHA v2: $2-3 per 1000
+│   ├── Turnstile: $3-5 per 1000
+│   ├── Estimate: 10,000 CAPTCHAs/month = ~$30-50/month
+│   └── Optimization: minimize CAPTCHA encounters through better stealth
+│
+├── LLM API (if using LLM extraction)
+│   ├── GPT-4o: ~$5 per 1M input tokens
+│   ├── Estimate: 50,000 pages × 2K tokens = 100M tokens = ~$500/month
+│   ├── Optimization: use LLM to generate selectors once, then reuse
+│   └── Alternative: local models (Llama 3) on GPU = $200-500/month for GPU instance
+│
+├── STORAGE
+│   ├── PostgreSQL (managed): $50-200/month
+│   ├── MongoDB: $50-200/month
+│   ├── S3: $0.023/GB/month (cheap)
+│   ├── Elasticsearch: $100-500/month (managed)
+│   └── Redis: $50-200/month
+│
+├── MONITORING
+│   ├── Grafana Cloud free tier or self-hosted: ~$0-50/month
+│   ├── Sentry: $0-26/month
+│   └── Self-hosted: included in compute costs
+│
+└── TOTAL ESTIMATED COST
+    ├── Small scale (1-5 workers): $200-500/month
+    ├── Medium scale (10-20 workers): $1,500-3,000/month
+    └── Large scale (50+ workers): $5,000-15,000/month
+Summary
+This system design provides a production-grade, scalable web scraping platform that handles the full spectrum of modern web challenges. The key architectural decisions are:
+
+Middleware pipeline architecture — each concern (stealth, popups, CAPTCHAs, pagination) is isolated and composable
+Tiered rendering strategy — don't use expensive browser rendering when simple HTTP requests work
+Adaptive difficulty scoring — the system learns which sites are hard and applies appropriate resources
+LLM-augmented extraction — handles arbitrary sites without manual selector configuration
+Resilient queue-based processing — failures are expected and handled gracefully with retries and escalation
+Horizontal scalability — stateless workers behind a shared queue, scale with Kubernetes
+The system is designed to scrape any website on the internet while being as stealthy, efficient, and resilient as possible.
+
