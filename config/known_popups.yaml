@@ -1,0 +1,90 @@
+# Known pop-up / overlay / interstitial patterns.
+# Layer 1 of the pop-up handler pipeline (see sd.txt "Pop-up & Overlay Handler").
+
+# Container selectors grouped by category. First match wins per category.
+containers:
+  cookie_banner:
+    - "#cookie-banner"
+    - "#cookie-banner-wrapper"
+    - ".cookie-consent"
+    - ".cookie-banner"
+    - "#gdpr"
+    - ".cc-banner"
+    - "#CybotCookiebotDialog"
+  newsletter:
+    - ".modal-newsletter"
+    - ".popup-subscribe"
+    - "#email-popup"
+    - ".newsletter-popup"
+    - "div[id*='newsletter' i]"
+  age_gate:
+    - ".age-gate"
+    - "#age-verify"
+    - ".age-verification"
+  notification:
+    - ".notification-bar"
+    - ".push-notification-prompt"
+    - ".notification-permission"
+  paywall:
+    - ".paywall-overlay"
+    - ".meter-wall"
+    - ".paywall"
+  login_wall:
+    - ".login-modal"
+    - ".signup-modal"
+    - "div[class*='regwall' i]"
+  survey:
+    - ".survey-popup"
+    - "div[id*='qualtrics' i]"
+
+# Generic containers: any element whose class/id matches these tokens is a popup candidate.
+generic_tokens:
+  - modal
+  - popup
+  - overlay
+  - interstitial
+  - lightbox
+  - dialog
+  - consent
+  - "onetrust"
+  - "cmp-"
+
+# Selectors for likely dismiss buttons (searched inside detected containers first).
+dismiss_selectors:
+  - "[aria-label='Close']"
+  - "[aria-label='Dismiss']"
+  - "[aria-label='close' i]"
+  - "button[class*='close' i]"
+  - "a[class*='close' i]"
+  - "[class*='dismiss' i]"
+  - "[data-dismiss]"
+  - "[data-close]"
+  - ".modal-close"
+  - ".popup-close"
+  - ".close-btn"
+  - ".js-close"
+
+# Button/link text that typically dismisses a popup (case-insensitive substring).
+dismiss_texts:
+  - "close"
+  - "dismiss"
+  - "got it"
+  - "no thanks"
+  - "not now"
+  - "maybe later"
+  - "later"
+  - "decline"
+  - "skip"
+  - "✕"
+  - "×"
+  - "✖"
+  - "x"
+
+# CSS injected when a container cannot be dismissed by clicking (nuclear option, layer 4).
+force_hide_css: |
+  [class*="modal" i], [class*="popup" i], [class*="overlay" i], [class*="interstitial" i],
+  .modal-backdrop, .overlay-backdrop, .backdrop { visibility: hidden !important; pointer-events: none !important; }
+
+# Allow-list: elements whose class matches these tokens are NEVER hidden.
+never_hide:
+  - "in-modal-link"   # placeholder for site-specific exceptions

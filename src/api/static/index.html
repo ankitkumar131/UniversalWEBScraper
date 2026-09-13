@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🕷️ Universal Web Scraper</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕷️</text></svg>">
+</head>
+<body>
+<header>
+  <h1>🕷️ Universal Web Scraper</h1>
+  <div class="stats-bar" id="stats-bar">
+    <div class="stat"><span class="stat-num" id="stat-jobs">0</span><span class="stat-label">jobs</span></div>
+    <div class="stat"><span class="stat-num" id="stat-completed">0</span><span class="stat-label">completed</span></div>
+    <div class="stat"><span class="stat-num" id="stat-failed">0</span><span class="stat-label">failed</span></div>
+    <div class="stat"><span class="stat-num" id="stat-items">0</span><span class="stat-label">items extracted</span></div>
+    <div class="stat"><span class="stat-num" id="stat-domains">0</span><span class="stat-label">domains</span></div>
+  </div>
+</header>
+
+<main>
+  <section class="panel" id="submit-panel">
+    <h2>New Scrape Job</h2>
+    <form id="scrape-form">
+      <div class="row">
+        <input type="url" id="url" placeholder="https://example.com/products" required
+               autocomplete="off" spellcheck="false" class="grow">
+        <button type="submit" class="primary" id="submit-btn">Scrape</button>
+      </div>
+      <div class="row options">
+        <label>Rendering
+          <select id="rendering">
+            <option value="auto" selected>auto (lightweight → browser)</option>
+            <option value="lightweight">lightweight (httpx)</option>
+            <option value="full_browser">full browser (stealth)</option>
+          </select>
+        </label>
+        <label>Max pages <input type="number" id="max-pages" value="5" min="1" max="100" style="width:5rem"></label>
+        <label>Extraction
+          <select id="mode">
+            <option value="hybrid" selected>hybrid</option>
+            <option value="css_selectors">CSS selectors</option>
+            <option value="xpath">XPath</option>
+            <option value="llm_auto">LLM / heuristic</option>
+          </select>
+        </label>
+        <label class="checkbox"><input type="checkbox" id="popup-handling" checked> popups + cookies</label>
+        <label class="checkbox"><input type="checkbox" id="screenshot"> screenshot</label>
+        <label class="checkbox"><input type="checkbox" id="raw-html"> raw HTML</label>
+        <label class="checkbox"><input type="checkbox" id="respect-robots" checked> robots.txt</label>
+      </div>
+      <details>
+        <summary>Extraction schema (optional JSON — selectors for structured extraction)</summary>
+        <textarea id="schema" rows="4" spellcheck="false"
+placeholder='{"items": ".product-card", "fields": {"name": "h3", "price": ".price", "link": "a @href"}}'></textarea>
+        <div class="hint">Simple: {"title": "h1", "price": ".price"} · List: {"items": ".row", "fields": {...}} · Attributes: "a @href" · Fallbacks: [".price", "[itemprop=price]"]</div>
+      </details>
+    </form>
+    <div id="submit-msg" class="msg hidden"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Jobs <span class="subtle" id="queue-info"></span></h2>
+    <table id="jobs-table">
+      <thead>
+        <tr><th>Job</th><th>URL</th><th>State</th><th>Items</th><th>Pages</th><th>Mode</th><th>Duration</th><th>Created</th><th></th></tr>
+      </thead>
+      <tbody id="jobs-body"><tr><td colspan="9" class="empty">no jobs yet — submit one above</td></tr></tbody>
+    </table>
+  </section>
+
+  <section class="panel hidden" id="detail-panel">
+    <div class="row spread">
+      <h2>Job <span id="detail-id" class="mono"></span></h2>
+      <button class="ghost" id="detail-close">close</button>
+    </div>
+    <div id="detail-stats" class="detail-stats"></div>
+    <div id="detail-errors"></div>
+    <h3>Results <span class="subtle" id="detail-count"></span></h3>
+    <div id="detail-results" class="results"></div>
+    <div id="detail-artifacts"></div>
+  </section>
+</main>
+
+<footer>
+  Universal Web Scraper · middleware pipeline · stealth browser · auto-pagination ·
+  hybrid extraction · <a href="/docs" target="_blank">API docs</a> ·
+  <a href="/api/health" target="_blank">health</a> · <a href="/metrics" target="_blank">metrics</a>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

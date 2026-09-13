@@ -1,0 +1,46 @@
+# Curated user-agent profiles. Each profile pairs a UA string with the platform
+# properties a consistent fingerprint must also report (see fingerprint.py).
+# Keep entries consistent: UA line, platform, os, screens, locales.
+
+profiles:
+  - ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    platform: "Win32"
+    os: windows
+    screens: [[1920, 1080], [1600, 900], [1366, 768], [2560, 1440]]
+    locales: ["en-US", "en"]
+    timezone: "America/New_York"
+
+  - ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    platform: "Win32"
+    os: windows
+    screens: [[1920, 1080], [1536, 864]]
+    locales: ["en-GB", "en"]
+    timezone: "Europe/London"
+
+  - ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    platform: "MacIntel"
+    os: macos
+    screens: [[1680, 1050], [1920, 1080], [2560, 1600], [1440, 900]]
+    locales: ["en-US", "en"]
+    timezone: "America/Los_Angeles"
+
+  - ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
+    platform: "MacIntel"
+    os: macos
+    screens: [[1512, 982], [1728, 1117]]
+    locales: ["en-US", "en"]
+    timezone: "America/Chicago"
+
+  - ua: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    platform: "Linux x86_64"
+    os: linux
+    screens: [[1920, 1080], [1600, 900], [3840, 2160]]
+    locales: ["en-US", "en"]
+    timezone: "Europe/Berlin"
+
+  - ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:127.0) Gecko/20100101 Firefox/127.0"
+    platform: "Win32"
+    os: windows
+    screens: [[1920, 1080], [1366, 768]]
+    locales: ["de-DE", "de", "en-US", "en"]
+    timezone: "Europe/Berlin"

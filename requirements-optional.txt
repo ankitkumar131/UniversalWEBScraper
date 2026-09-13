@@ -1,0 +1,13 @@
+# Browser rendering + TLS impersonation
+playwright>=1.44
+curl_cffi>=0.6
+
+# Distributed queue (production)
+celery>=5.3
+redis>=5.0
+
+# PostgreSQL backend
+asyncpg>=0.29
+
+# S3-compatible artifact storage
+boto3>=1.34

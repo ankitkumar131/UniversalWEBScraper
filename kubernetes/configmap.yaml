@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: uws-config
+data:
+  QUEUE_MODE: "celery"
+  REDIS_URL: "redis://uws-redis:6379/0"
+  DATABASE_URL: "postgresql+asyncpg://scraper:scraper@uws-postgres:5432/scraper"
+  RESPECT_ROBOTS: "true"
+  LOG_LEVEL: "INFO"
+  COOKIE_STRATEGY: "accept_all"
+  PROXY_ENABLED: "false"
+  CAPTCHA_PROVIDER: "none"
+  LLM_PROVIDER: "none"
