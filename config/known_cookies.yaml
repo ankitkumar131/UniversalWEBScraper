@@ -1,0 +1,63 @@
+# Known Consent Management Platforms (CMPs) and their selectors.
+# Used by the cookie-consent handler (specialised sub-module of the pop-up handler).
+
+strategies:
+  accept_all:
+    texts: ["accept all", "accept cookies", "allow all", "agree", "i agree", "accept", "allow", "ok", "got it", "continue", "yes"]
+  reject_all:
+    texts: ["reject all", "decline all", "necessary only", "only necessary", "manage preferences", "settings", "refuse", "deny"]
+  dismiss:
+    texts: ["close", "dismiss", "✕", "×"]
+
+# Per-CMP known selectors. accept / reject keys take priority over text matching.
+cmps:
+  onetrust:
+    container: "#onetrust-banner-sdk"
+    accept: "#onetrust-accept-btn-handler"
+    reject: "#onetrust-reject-btn-handler"
+  cookiebot:
+    container: "#CybotCookiebotDialog"
+    accept: "#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll"
+    reject: "#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowNecessary"
+  trustarc:
+    container: "#truste-consent-track"
+    accept: ".call"
+    reject: "#truste-consent-required"
+  quantcast:
+    container: ".qc-cmp2-container"
+    accept: "button[mode='primary']"
+    reject: "button[mode='secondary']"
+  didomi:
+    container: "#didomi-host"
+    accept: "#didomi-notice-agree-button"
+    reject: "button span:has-text('Necessary')"   # best effort
+  cookieyes:
+    container: ".cky-consent-container"
+    accept: ".cky-btn-accept"
+    reject: ".cky-btn-reject"
+  osano:
+    container: ".osano-cm-dialog"
+    accept: ".osano-cm-accept-all"
+    reject: ".osano-cm-deny-all"
+  borlabs:
+    container: "#CookieBox"
+    accept: "#CookieBoxSaveButton"
+    reject: "._brlbs-btn-refuse"
+  complianz:
+    container: "#cmplz-cookiebanner-container"
+    accept: ".cmplz-btn.cmplz-accept"
+    reject: ".cmplz-btn.cmplz-deny"
+  iubenda:
+    container: "#iubenda-cs-banner"
+    accept: ".iubenda-cs-accept-btn"
+    reject: ".iubenda-cs-reject-btn"
+
+# Generic keyword containers: any fixed element containing these words + a button.
+generic_keywords: ["cookie", "consent", "privacy", "gdpr", "tracking"]
+
+# Consent cookies to set directly as a last resort (JS injection strategy).
+cookie_overrides:
+  - name: "CookieConsent"
+    value: '{"stamp":"-1","necessary":true,"preferences":true,"statistics":true,"marketing":true,"ver":1}'
+  - name: "cookieyes-consent"
+    value: "consent"

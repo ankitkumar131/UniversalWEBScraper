@@ -1,0 +1,73 @@
+# Universal Web Scraper — full stack for local/scale-out development.
+#   docker compose up --build
+#
+# Services:
+#   api      — FastAPI + dashboard (http://localhost:8000)
+#   worker   — Celery worker (browser + lightweight queues); set QUEUE_MODE=celery to use it
+#   redis    — broker + shared rate-limit/robots cache
+#   postgres — optional relational backend (DATABASE_URL below)
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-sqlite+aiosqlite:////app/data/scraper.db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      QUEUE_MODE: ${QUEUE_MODE:-local}
+      RESPECT_ROBOTS: ${RESPECT_ROBOTS:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # PROXY_LIST_FILE: /run/secrets/proxies   # one proxy URL per line
+      # CAPTCHA_PROVIDER: twocaptcha
+      # TWOCAPTCHA_API_KEY: ...
+    volumes:
+      - api-data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-sqlite+aiosqlite:////app/data/scraper.db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    volumes:
+      - api-data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    # scale horizontally: docker compose up --scale worker=5
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["postgres"]          # enable: docker compose --profile postgres up
+    environment:
+      POSTGRES_USER: scraper
+      POSTGRES_PASSWORD: scraper
+      POSTGRES_DB: scraper
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  api-data:
+  pg-data:

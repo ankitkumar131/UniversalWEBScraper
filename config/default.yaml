@@ -1,0 +1,77 @@
+# Default configuration for the Universal Web Scraper.
+# Every value can be overridden via environment variables (see src/core/config.py).
+
+app:
+  name: universal-web-scraper
+  data_dir: data
+  host: 0.0.0.0
+  port: 8000
+
+engine:
+  rendering: auto              # auto | lightweight | full_browser
+  browser: chromium            # chromium | firefox | webkit
+  headless: true
+  max_contexts: 4              # concurrent browser contexts
+  recycle_browser_after_pages: 200
+  block_media: false           # block images/fonts/media for speed when only text needed
+  ignore_https_errors: false   # tolerate broken/intercepted TLS (e.g. corporate MITM proxies)
+  min_html_length: 2000        # below this the page is considered "empty" for escalation
+
+politeness:
+  respect_robots: true
+  requests_per_second_per_domain: 1.0
+  burst: 2
+  jitter_ms: [250, 1500]
+  crawl_delay_cap: 10.0
+
+timeouts:
+  page_load_ms: 30000
+  challenge_wait_ms: 15000     # how long to wait for a JS challenge (e.g. Cloudflare) to clear
+  content_stable_ms: 1200      # DOM must be quiet for this long before extraction
+  spinner_wait_ms: 8000
+
+pagination:
+  max_pages: 10
+  max_items: 1000
+  max_time_seconds: 300
+  consecutive_empty_pages: 2
+
+retry:
+  max_retries: 2
+  backoff_base_seconds: 5
+  backoff_max_seconds: 120
+
+storage:
+  database_url: null           # null => sqlite+aiosqlite:///<data_dir>/scraper.db
+  artifacts_dir: data/artifacts
+
+popup_handling: true
+
+cookie_consent:
+  enabled: true
+  strategy: accept_all         # accept_all | reject_all | dismiss
+
+proxy:
+  enabled: false
+  rotation: per_session        # per_request | per_session | sticky_domain
+  check_url: https://httpbin.org/ip
+  check_interval_seconds: 300
+
+captcha:
+  provider: none               # none | twocaptcha
+  api_key_env: TWOCAPTCHA_API_KEY
+
+llm:
+  provider: none               # none | openai_compatible
+  api_key_env: OPENAI_API_KEY
+  base_url: https://api.openai.com/v1
+  model: gpt-4o-mini
+  max_tokens: 4000
+
+queue:
+  mode: local                  # local | celery
+  redis_url: null
+
+monitoring:
+  metrics_enabled: true
+  log_level: INFO

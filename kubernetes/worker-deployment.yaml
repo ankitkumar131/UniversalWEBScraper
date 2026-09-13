@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: uws-worker
+  labels: {app: uws-worker}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: uws-worker}
+  template:
+    metadata:
+      labels: {app: uws-worker}
+    spec:
+      containers:
+        - name: worker
+          image: universalwebscraper/worker:latest
+          command: ["celery", "-A", "src.queue.celery_app.celery_app", "worker",
+                    "-Q", "standard,lightweight,browser", "--concurrency=2", "-l", "info"]
+          envFrom:
+            - configMapRef: {name: uws-config}
+            - secretRef: {name: uws-secrets}
+          resources:
+            # browser workers: ~512MB-1GB per concurrent tab (sd.txt Scaling Strategy)
+            requests: {cpu: 500m, memory: 1Gi}
+            limits: {cpu: "2", memory: 3Gi}
+          volumeMounts:
+            - {name: artifacts, mountPath: /app/data}
+      volumes:
+        - name: artifacts
+          emptyDir: {}

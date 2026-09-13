@@ -1,0 +1,42 @@
+# Browser fingerprint component pools (see src/browser/stealth/fingerprint.py).
+# A fingerprint is sampled consistently: platform must match the user-agent profile.
+
+webgl:
+  vendors:
+    - "Intel Inc."
+    - "Google Inc. (Intel)"
+    - "Google Inc. (NVIDIA)"
+    - "Apple"
+  renderers:
+    windows:
+      - "Intel(R) UHD Graphics 630"
+      - "Intel(R) Iris(R) Xe Graphics"
+      - "ANGLE (Intel, Intel(R) UHD Graphics 630 (0x00003E92) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      - "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002503) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    macos:
+      - "Apple M1"
+      - "Apple M2"
+      - "Intel(R) Iris(TM) Plus Graphics 645"
+    linux:
+      - "Mesa Intel(R) UHD Graphics (CML GT2)"
+      - "llvmpipe (LLVM 15.0.7, 256 bits)"
+
+fonts:
+  common: ["Arial", "Calibri", "Cambria", "Courier New", "Georgia", "Times New Roman", "Trebuchet MS", "Verdana"]
+  macos_extra: ["Helvetica Neue", "Menlo", "Optima"]
+  windows_extra: ["Segoe UI", "Tahoma"]
+
+hardware:
+  device_memory_gb: [4, 8, 16]     # navigator.deviceMemory
+  cpu_cores: [4, 8, 12, 16]        # navigator.hardwareConcurrency
+  max_touch_points: [0, 0, 0, 10]  # mostly desktop, occasionally touch
+
+locales:
+  en-US: "en-US,en;q=0.9"
+  en-GB: "en-GB,en;q=0.9"
+  de-DE: "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7"
+  fr-FR: "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7"
+
+canvas_noise:
+  enabled: true
+  amplitude: 0.02   # fraction of channel value perturbed
