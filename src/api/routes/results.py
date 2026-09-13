@@ -63,9 +63,9 @@ async def stats() -> dict:
     from sqlalchemy import func, select
 
     from src.storage.models import DomainRow, JobResultRow, JobRow
-    from src.storage.database import session_factory
 
-    async with session_factory() as session:
+    state = _runner()
+    async with state.session_factory() as session:
         total = (await session.execute(select(func.count()).select_from(JobRow))).scalar() or 0
         by_state = dict((await session.execute(
             select(JobRow.state, func.count()).group_by(JobRow.state))).all())
